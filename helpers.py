@@ -1,5 +1,6 @@
 import os 
 import sys
+import subprocess
 
 # Paths
 m5_mcpat_path = os.environ['M5MCPATPATH']
@@ -34,8 +35,9 @@ def run_binary(cmd_str, job_name, out_dir, is_slurm_job=False):
     with open(out_dir+"/"+job_name+".stdout", 'w+') as f:
       f.write(output)
     
-    with open(out_dir+"/"+job_name+".stderr", 'w+') as f:
-      f.write(error)
+    if error: 
+      with open(out_dir+"/"+job_name+".stderr", 'w+') as f:
+        f.write(error)
 
     
 def mkdir_p(directory):
@@ -51,9 +53,20 @@ def mkdir_p(directory):
 
 def convert_gem5_mcpat(gem5_out_dir):
   # ./gem5McPATparse -x template.xml -c config.ini -s stats.txt -o out.xml
-  cmd_str = m5_mcpat_path+"/gem5McPATparse -x template.xml"
+  cmd_str = m5_mcpat_path+"/gem5McPATparse"
+  cmd_str += " -x " + m5_mcpat_path + "/template.xml"
   cmd_str += " -c " + gem5_out_dir + "/config.ini"
   cmd_str += " -s " + gem5_out_dir + "/stats.txt"
   cmd_str += " -o " + gem5_out_dir + "/mcpat.xml"
   
   run_binary(cmd_str, "gem5mcpat", gem5_out_dir)
+
+
+def run_mcpat(gem5_out_dir):
+  # mcpat -infile <input file name>  -print_level < level of details 0~5 >  -opt_for_clk < 0 (optimize for ED^2P only)/1 (optimzed for target clock rate)>
+  cmd_str = mcpat_path + "/mcpat"
+  cmd_str += " -infile " + gem5_out_dir+"/mcpat.xml"
+  cmd_str += " -print_level 1"
+  cmd_str += " -opt_for_clk 0"
+
+  run_binary(cmd_str, "mcpat", gem5_out_dir)
