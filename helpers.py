@@ -9,11 +9,20 @@ import getpass
 # m5_mcpat_conversion_script = os.environ['M5TOMCPAT_CONVSCRIPT']
 m5_path = os.environ['M5PATH']
 mcpat_path = os.environ['MCPATPATH']
+helpers_path = os.environ['HELPDIR']
 username = getpass.getuser()
 squeue_self_limit = 512
 
-def run_binary(cmd_str, job_name, out_dir, is_slurm_job=False, blocking=True):
-  if is_slurm_job:
+def run_binary(cmd_str, job_name, out_dir, mode="dryrun"):
+
+  cmd_arr = []
+  for q_index, qstr in enumerate(cmd_str.split("\"")):
+    if q_index % 2 == 0:
+      cmd_arr += qstr.split()
+    else:
+      cmd_arr.append('"'+qstr+'"')
+
+  if "slurm" in mode:
     print "Submitting the job:", cmd_str
 
     sbatch_str  = "sbatch --partition=slurm_part"
@@ -22,46 +31,38 @@ def run_binary(cmd_str, job_name, out_dir, is_slurm_job=False, blocking=True):
     sbatch_str += " --job-name="+job_name+"_"+out_dir
     sbatch_str += " --output="+out_dir+"/"+job_name+".stdout"
     sbatch_str += " --error="+out_dir+"/"+job_name+".stderr"
-    sbatch_str += " ./srunbuf.sh " + cmd_str
+    sbatch_str += " "+helpers_path+"/srunbuf.sh "
+
+    sbatch_arr = sbatch_str.split() + cmd_arr
 
     #Execute sbatch command
-    process = subprocess.Popen(sbatch_str.split(), stdout=subprocess.PIPE)
+    process = subprocess.Popen(sbatch_arr, stdout=subprocess.PIPE)
     output, error = process.communicate()
     with open(out_dir+"/"+job_name+".slurmout", 'w+') as f:
       f.write(output)
       if error:
         f.write(error)
-  else:
+
+  elif "nonblocking" in mode:
+    process = subprocess.Popen(cmd_arr, stdout=subprocess.PIPE)
+    return process
+
+  elif "blocking" in mode:
     print "Running the job:", cmd_str
-    cmd_arr = cmd_str.split()
-    real_arr = []
-    in_quote = False
-    for c in cmd_arr:
-      if not in_quote and c[0] == '"':
-        in_quote = True
-        real_arr.append(c)
-      elif in_quote: 
-        real_arr[-1] += " " + c
-        if c[-1] == '"':
-          in_quote = False
-      else : 
-        real_arr.append(c)
-    print real_arr
-    # quit()
-    process = subprocess.Popen(real_arr, stdout=subprocess.PIPE)
 
-    if blocking:
-        output, error = process.communicate()
+    process = subprocess.Popen(cmd_arr, stdout=subprocess.PIPE)
+    process.wait()
+    output, error = process.communicate()
 
-        with open(out_dir+"/"+job_name+".stdout", 'w+') as f:
-          f.write(output)
+    with open(out_dir+"/"+job_name+".stdout", 'w+') as f:
+      f.write(output)
 
-        if error:
-          with open(out_dir+"/"+job_name+".stderr", 'w+') as f:
-            f.write(error)
-    else:
-        return process 
+    if error:
+      with open(out_dir+"/"+job_name+".stderr", 'w+') as f:
+        f.write(error)
 
+  elif "dryrun" in mode:
+    print cmd_str
 
 def mkdir_p(directory):
   try:
