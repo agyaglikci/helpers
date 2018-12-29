@@ -23,6 +23,7 @@ def run_binary(cmd_str, job_name, out_dir, mode="dryrun"):
       cmd_arr.append('"'+qstr+'"')
 
   if "slurm" in mode:
+    # wait_for_queue()
     print "Submitting the job:", cmd_str
 
     sbatch_str  = "sbatch --partition=slurm_part"
