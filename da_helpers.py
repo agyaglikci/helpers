@@ -58,6 +58,37 @@ def normalize_within_row(row, cols):
         row[col] = row[col] / total
     return row
 
+def normalize_to_col(df, refcol, cols):
+    _df = df
+    for col in cols:
+        _df[col] = _df[col] / _df[refcol]
+    return _df
+
+def normalize_to_reference(df, search_args, target_col, group_cols):
+    dfs = []
+    allcols = list(
+        set(list(search_args)).union(
+            set(group_cols),
+            set([target_col, "normalized_"+target_col])
+        )
+    )
+
+    for values, sub_df in df.groupby(group_cols):
+        # Find the baseline value
+        ref_df = sub_df.copy()
+        for scol, sval in search_args.iteritems():
+            ref_df = ref_df[ref_df[scol] == sval]
+        ref_val = float(ref_df.iloc[0][target_col])
+
+        # Generate normalized columns
+        new_df = sub_df.copy()
+        new_df["normalized_"+target_col] = new_df[target_col] / ref_val
+
+        # Append newly generated columns
+        dfs.append(new_df[allcols])
+
+    return pd.concat(dfs, ignore_index=True)
+
 
 def sns_stack_plot(df, ax, x_col, y_cols, x_title, y_title, file_name, normalize=True):
     # Parameters
