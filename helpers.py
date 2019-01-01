@@ -13,7 +13,7 @@ helpers_path = os.environ['HELPDIR']
 username = getpass.getuser()
 squeue_self_limit = 512
 
-def run_binary(cmd_str, job_name, out_dir, mode="dryrun"):
+def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log"):
 
   cmd_arr = []
   for q_index, qstr in enumerate(cmd_str.split("\"")):
@@ -63,7 +63,8 @@ def run_binary(cmd_str, job_name, out_dir, mode="dryrun"):
         f.write(error)
 
   elif "dryrun" in mode:
-    print cmd_str
+    with open(append_to, "a+") as f:
+        f.write(cmd_str + " &\n")
 
 def mkdir_p(directory):
   try:
