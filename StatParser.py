@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import os
+import re
 
 RUN_TEST = False
 
@@ -22,6 +23,7 @@ class StatParser(object):
         stats_index = 0
         in_stats = (not is_gem5) and (chosen_stats_index is None )
         with open(file_path) as f:
+            vector_stat_name = ""
             for line in f.readlines():
                 if "Begin Simulation Statistics" in line:
                     in_stats = (chosen_stats_index is None ) or (chosen_stats_index == stats_index)
@@ -45,7 +47,14 @@ class StatParser(object):
                     desc = safeget(lineparts,1,defval="")
                     name = safeget(infoparts,0)
                     value= float(safeget(infoparts,1))
+                    index = re.findall("^\[[0-9]\]", name)
+                    if len(index) > 0:
+                      name = vector_stat_name+"_"+str(index[0].split("[")[1].split("]")[0]) 
+                    else :
+                      vector_stat_name = name
 
+                    if self.verbose:
+                      print name, value
                     if not is_gem5:
                         #all lines start with ramulator so I drop them...
                         name = name.replace("ramulator.","")

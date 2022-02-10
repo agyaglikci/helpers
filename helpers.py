@@ -3,17 +3,22 @@ import sys
 import subprocess
 import errno
 import getpass
+import time 
+from time import sleep
+from paramiko import SSHClient
+import socket
+hostname = socket.gethostname()
 
 # Paths
 # m5_mcpat_path = os.environ['M5MCPATPATH']
 # m5_mcpat_conversion_script = os.environ['M5TOMCPAT_CONVSCRIPT']
-m5_path = os.environ['M5PATH']
-mcpat_path = os.environ['MCPATPATH']
-helpers_path = os.environ['HELPDIR']
+m5_path = os.environ.get('M5PATH')
+mcpat_path = os.environ.get('MCPATPATH')
+helpers_path = os.environ.get('HELPDIR')
 username = getpass.getuser()
-squeue_self_limit = 512
+squeue_self_limit = 800
 
-def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log"):
+def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log", prereq=-1, is_ramulator=False, is_local=False, exclude_nodes=[]):
 
   cmd_arr = []
   for q_index, qstr in enumerate(cmd_str.split("\"")):
@@ -24,7 +29,9 @@ def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log"):
 
   if "slurm" in mode:
     # wait_for_queue()
-    print "Submitting the job:", cmd_str
+    #print "Submitting the job:", cmd_str
+
+    mkdir_p(out_dir)
 
     sbatch_str  = "sbatch --partition=slurm_part"
     sbatch_str += " --mincpus=1"
@@ -32,10 +39,25 @@ def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log"):
     sbatch_str += " --job-name="+job_name+"_"+out_dir
     sbatch_str += " --output="+out_dir+"/"+job_name+".stdout"
     sbatch_str += " --error="+out_dir+"/"+job_name+".stderr"
-    sbatch_str += " "+helpers_path+"/srunbuf.sh "
+    if prereq >= 0:
+      sbatch_str += " --dependency=afterok:"+str(prereq)
+    if is_local:  
+      exclude_nodes = []
+      for i in range(10):
+        if hostname != "kratos"+str(i):
+          exclude_nodes.append("kratos"+str(i))
+
+    if len(exclude_nodes) > 0:
+      sbatch_str += " --exclude="+",".join(exclude_nodes)
+
+    if is_ramulator:
+        sbatch_str += " "+helpers_path+"/run_ramulator.sh "
+    else: 
+        sbatch_str += " "+helpers_path+"/srunbuf.sh "
 
     sbatch_arr = sbatch_str.split() + cmd_arr
-
+    #print sbatch_arr
+    # quit()
     #Execute sbatch command
     process = subprocess.Popen(sbatch_arr, stdout=subprocess.PIPE)
     output, error = process.communicate()
@@ -43,6 +65,9 @@ def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log"):
       f.write(output)
       if error:
         f.write(error)
+    sleep(1)
+    jobid = output.split(" ")[-1]
+    return jobid    
 
   elif "nonblocking" in mode:
     process = subprocess.Popen(cmd_arr, stdout=subprocess.PIPE)
@@ -50,6 +75,13 @@ def run_binary(cmd_str, job_name, out_dir, mode="dryrun", append_to="jobs.log"):
 
   elif "blocking" in mode:
     print "Running the job:", cmd_str
+    mkdir_p(out_dir)
+
+    if "/panzer/" in out_dir:
+        mkdir_p(out_dir.replace("/panzer/", "/local/"))
+
+    if "/local/" in out_dir:
+        mkdir_p(out_dir.replace("/local/", "/panzer/"))
 
     process = subprocess.Popen(cmd_arr, stdout=subprocess.PIPE)
     process.wait()
@@ -74,6 +106,29 @@ def mkdir_p(directory):
       pass
     else:
       raise
+
+def remote_mkdir_p(directory):
+  #cmd = helpers_path + "/kratos_mkdir_p.sh " + directory
+  #run_binary(cmd, "mkdir", directory, mode="blocking", append_to="jobs.log", is_ramulator=False)
+  ssh = SSHClient()
+  ssh.load_system_host_keys()
+  for i in [0,1,2,3,4,5,7,8,9]:
+    ip = "10.1.212.16"+str(i)
+    ssh.connect('yaglikca@'+ip+":22")
+    ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('mkdir -p '+directory)
+    print ssh_stdout
+    print ssh_stderr
+
+def remote_mkdir(directory):
+  for kratosid in range(10):
+    cmdstr = "ssh yaglikca@kratos"+str(kratosid)+" \"mkdir -p " + directory + "\""
+    print cmdstr
+    process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE)
+    output, error = process.communicate()
+    print output 
+    if error:
+      print error
+      quit()
 
 
 def convert_gem5_mcpat(gem5_out_dir):
@@ -121,12 +176,13 @@ def wait_for_queue():
     ask = False
     cmd = "squeue -u " + username + " -t pending | wc -l"
     # cmd = "./num_pending_jobs.sh"
+    print cmd.split()
     process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     if error:
       print error
       quit()
-    # print output
+    print output
     queued = int(output)
     if queued >= max_queued:
       ask = True
